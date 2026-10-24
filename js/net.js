@@ -191,8 +191,12 @@ function handleEvent(ev) {
     }
     return;
   }
-  if (msg.type === 'pong' && msg.target !== undefined) {
-    // Solo el destinatario mide su ping.
+  if (msg.type === 'pong') {
+    // BUG CORREGIDO 2026-10-24: antes se exigía msg.target en el
+    // contenido, pero send() pone el destinatario solo en la
+    // etiqueta ['p', pubkey], nunca en el contenido. Por eso el
+    // pong se ignoraba siempre y el ping quedaba en "…" en
+    // anfitrión e invitado. Ahora se comprueba la etiqueta.
     const pTag = (ev.tags || []).find((t) => t[0] === 'p');
     if (pTag && pTag[1] !== state.net.myPubkey) return;
     if (pendingPings.has(msg.id)) {
@@ -220,7 +224,15 @@ export function startPingLoop() {
       const first = pendingPings.keys().next().value;
       pendingPings.delete(first);
     }
-    const target = state.net.isHost ? state.net.myPubkey : state.room.hostPubkey;
+    // Anfitrión: mide el ping contra un invitado real si lo hay
+    // (el invitado responde porque el ping lleva su pubkey como
+    // destino); si está solo, se mide a sí mismo por el relay.
+    // Invitado: mide contra el anfitrión.
+    let target = state.room.hostPubkey;
+    if (state.net.isHost) {
+      const other = (state.room.players || []).find((p) => p.pubkey !== state.net.myPubkey);
+      target = other ? other.pubkey : state.net.myPubkey;
+    }
     if (target) send('ping', { id, t: Date.now(), target }, target);
   }, 2000);
 }

@@ -8,7 +8,7 @@ import { setupInput } from './input.js';
 import { setupUI } from './ui.js';
 import { applySettings } from './settings.js';
 import { pauseGame, endGame } from './game.js';
-import { updateRemotes } from './remote.js';
+import { updateRemotes, updateNetBots } from './remote.js';
 import { send, sendPlayerPos } from './net.js';
 import { broadcastScore } from './arbiter.js';
 import { setupLobby } from './lobby.js';
@@ -34,6 +34,7 @@ let previewAngle = 0;
 let lastPosSent = 0;
 let lastPos = { x: 9999, z: 9999, yaw: 9999, hp: -1, alive: null };
 let lastBotSnap = 0;
+let botSnapSeq = 0;
 let lastScoreSent = 0;
 
 function animate(now) {
@@ -71,9 +72,11 @@ function animate(now) {
 
     updatePlayer(dt);
     // En red, solo el anfitrión simula los bots; los demás los
-    // colocan con las fotos (bot_snapshot) que aquel envía.
+    // interpolan hacia las fotos (bot_snapshot) que aquel envía.
     if (!state.net.enabled || state.net.isHost) {
       for (const b of state.bots) b.update(dt);
+    } else {
+      updateNetBots(dt);
     }
     updateRemotes(dt);
     updateEffects(dt);
@@ -92,7 +95,9 @@ function animate(now) {
       }
       if (state.net.isHost && t - lastBotSnap >= 200) {
         lastBotSnap = t;
+        botSnapSeq++;
         send('bot_snapshot', {
+          seq: botSnapSeq,
           bots: state.bots.map((b) => ({ x: +b.pos.x.toFixed(2), z: +b.pos.z.toFixed(2), yaw: +b.faceYaw.toFixed(3), hp: Math.round(b.hp), alive: b.alive })),
         });
       }

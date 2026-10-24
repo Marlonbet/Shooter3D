@@ -107,9 +107,16 @@ export class RemotePlayer {
 
   update(dt) {
     // Interpolación: el remoto se acerca a la última posición
-    // recibida en vez de teletransportarse a ella.
-    const k = 1 - Math.exp(-dt * 11);
-    this.pos.lerp(this.targetPos, k);
+    // recibida en vez de teletransportarse a ella. Si quedó muy
+    // atrás (pico de lag o reaparición), se teletransporta para
+    // no arrastrarse por todo el mapa persiguiendo un fantasma.
+    const dist = this.pos.distanceTo(this.targetPos);
+    if (dist > 6) {
+      this.pos.copy(this.targetPos);
+    } else {
+      const k = 1 - Math.exp(-dt * (dist > 2 ? 18 : 11));
+      this.pos.lerp(this.targetPos, k);
+    }
     let diff = this.targetYaw - this.yaw;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     this.yaw += diff * k;
@@ -163,6 +170,25 @@ export function clearRemotes() {
   state.remotePlayers.length = 0;
 }
 
+// Bots en el invitado: interpolación hacia la última foto del
+// anfitrión, en vez de teletransporte cada 200 ms.
+export function updateNetBots(dt) {
+  for (const bot of state.bots) {
+    if (!bot.alive || !bot.netTargetPos) continue;
+    const dist = bot.pos.distanceTo(bot.netTargetPos);
+    if (dist > 6) bot.pos.copy(bot.netTargetPos);
+    else bot.pos.lerp(bot.netTargetPos, 1 - Math.exp(-dt * 14));
+    if (typeof bot.netTargetYaw === 'number') {
+      let diff = bot.netTargetYaw - bot.faceYaw;
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+      bot.faceYaw += diff * (1 - Math.exp(-dt * 14));
+      bot.group.rotation.y = bot.faceYaw;
+    }
+    bot.group.position.copy(bot.pos);
+    bot.group.position.y = Math.sin(performance.now() * 0.008 + bot.pos.x) * 0.035;
+  }
+}
+
 export function updateRemotes(dt) {
   for (const r of state.remotePlayers) {
     if (r.alive) r.update(dt);
@@ -171,6 +197,10 @@ export function updateRemotes(dt) {
     else if (r.alive && performance.now() - r.lastSeen <= 10000 && !r.group.visible) r.group.visible = true;
   }
 }
+
+// Secuencia de fotos de bots: si una foto vieja llega tarde por
+// el relay, se ignora en vez de devolver los bots hacia atrás.
+let lastBotSnapSeq = -1;
 
 // Mensajes de red que afectan a los remotos (llegan como evento
 // 'neon-net' desde net.js). Esto evita importaciones circulares:
@@ -184,21 +214,36 @@ window.addEventListener('neon-net', (e) => {
     const r = ensureRemote({ pubkey: msg.from, name: msg.name, team: msg.team || 'enemy' }, cfg);
     r.applySnapshot(msg);
   } else if (msg.type === 'bot_snapshot' && Array.isArray(msg.bots)) {
-    // Solo el anfitrión simula los bots; los demás los colocan
-    // donde dice la foto que llega 5 veces por segundo.
+    // Solo el anfitrión simula los bots. ANTES, el invitado
+    // colocaba cada bot directamente en la posición de la foto
+    // (5 veces/s + retardo del relay): por eso los bots se veían
+    // a saltos, congelados y luego teletransportados, mientras
+    // el anfitrión los veía fluidos (los simula a 60 fps).
+    // AHORA la foto solo fija un OBJETIVO y el bucle principal
+    // interpola hacia él cada cuadro (ver updateNetBots).
     if (state.net.isHost) return;
+    if (typeof msg.seq === 'number') {
+      if (msg.seq <= lastBotSnapSeq) return;
+      lastBotSnapSeq = msg.seq;
+    }
     msg.bots.forEach((b, i) => {
       const bot = state.bots[i];
       if (!bot) return;
-      bot.pos.set(b.x, 0, b.z);
-      bot.group.position.copy(bot.pos);
-      bot.faceYaw = b.yaw;
-      bot.group.rotation.y = b.yaw;
+      if (!bot.netTargetPos) bot.netTargetPos = new THREE.Vector3(bot.pos.x, 0, bot.pos.z);
+      bot.netTargetPos.set(b.x, 0, b.z);
+      bot.netTargetYaw = b.yaw;
       bot.hp = b.hp;
       bot.barFill.scale.x = Math.max(0, bot.hp / bot.maxHp);
       if (typeof bot.updateBarColor === 'function') bot.updateBarColor();
       if (!b.alive && bot.alive) { bot.alive = false; bot.group.visible = false; }
-      else if (b.alive && !bot.alive) { bot.alive = true; bot.group.visible = true; bot.group.scale.setScalar(1); }
+      else if (b.alive && !bot.alive) {
+        // Reaparición: no deslizarse desde donde murió.
+        bot.alive = true; bot.group.visible = true; bot.group.scale.setScalar(1);
+        bot.pos.set(b.x, 0, b.z); bot.netTargetPos.set(b.x, 0, b.z);
+        bot.group.position.copy(bot.pos);
+      } else if (b.alive && bot.pos.distanceTo(bot.netTargetPos) > 20) {
+        bot.pos.copy(bot.netTargetPos); bot.group.position.copy(bot.pos);
+      }
     });
   } else if (msg.type === 'shot' && msg.from !== state.net.myPubkey) {
     const r = getRemote(msg.from);

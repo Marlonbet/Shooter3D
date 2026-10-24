@@ -180,6 +180,11 @@ export function playerShoot() {
         addImpact(hit.point, 0xff5577);
         showHitmarker(isHead);
         claimHit('remote', null, remote.pubkey, dmg, isHead);
+        // Daño optimista (solo invitado): la barra baja al
+        // instante; si el árbitro lo rechaza, la siguiente foto
+        // o mensaje de vida la corrige. Sin esto, el invitado
+        // veía que disparaba y nada pasaba durante 1-2 s.
+        if (!state.net.isHost && typeof remote.setHp === 'function') remote.setHp(Math.max(0, remote.hp - dmg));
       }
     } else if (bot && bot.team === 'ally' && state.mode === 'squad' && !netMode) {
       addTracer(muzzle, hit.point, 0x4d9fff);
@@ -197,6 +202,13 @@ export function playerShoot() {
         addImpact(hit.point, 0xff5577);
         showHitmarker(isHead);
         claimHit('bot', state.bots.indexOf(bot), null, dmg, isHead);
+        // Daño optimista (solo invitado): igual que arriba, la
+        // barra baja ya; el árbitro confirma o corrige después.
+        if (!state.net.isHost) {
+          bot.hp = Math.max(0, bot.hp - dmg);
+          bot.barFill.scale.x = Math.max(0, bot.hp / bot.maxHp);
+          if (typeof bot.updateBarColor === 'function') bot.updateBarColor();
+        }
       } else {
         bot.takeDamage(dmg, isHead, 'player');
         addTracer(muzzle, hit.point, 0x9dfcff);
