@@ -210,6 +210,8 @@ window.addEventListener('neon-net', (e) => {
   if (!msg) return;
   if (msg.type === 'pos') {
     if (msg.from === state.net.myPubkey) return;
+    state.net.stats.posRecv++;
+    state.net.stats.lastPosAt = Date.now();
     const cfg = DIFFICULTIES[state.difficulty] || DIFFICULTIES.normal;
     const r = ensureRemote({ pubkey: msg.from, name: msg.name, team: msg.team || 'enemy' }, cfg);
     r.applySnapshot(msg);
@@ -226,6 +228,8 @@ window.addEventListener('neon-net', (e) => {
       if (msg.seq <= lastBotSnapSeq) return;
       lastBotSnapSeq = msg.seq;
     }
+    state.net.stats.botSnapRecv++;
+    state.net.stats.lastBotSnapAt = Date.now();
     msg.bots.forEach((b, i) => {
       const bot = state.bots[i];
       if (!bot) return;

@@ -202,6 +202,7 @@ function handleEvent(ev) {
     if (pendingPings.has(msg.id)) {
       state.net.pingMs = Date.now() - pendingPings.get(msg.id);
       pendingPings.delete(msg.id);
+      state.net.stats.pingRecv++;
     }
     return;
   }
@@ -233,7 +234,7 @@ export function startPingLoop() {
       const other = (state.room.players || []).find((p) => p.pubkey !== state.net.myPubkey);
       target = other ? other.pubkey : state.net.myPubkey;
     }
-    if (target) send('ping', { id, t: Date.now(), target }, target);
+    if (target && send('ping', { id, t: Date.now(), target }, target)) state.net.stats.pingSent++;
   }, 2000);
 }
 export function stopPingLoop() {

@@ -333,6 +333,23 @@ export function setupLobby() {
     }
   });
 
+  // Diagnóstico de red: se actualiza cada 2 s aunque no haya
+  // sala todavía, para que el usuario pueda reportar números
+  // reales en vez de "no marca ping".
+  const updateNetDiag = () => {
+    const el = $('netDiag');
+    if (!el) return;
+    if (!state.room) {
+      el.textContent = `Relays: ${state.net.relayCount}/${state.net.totalRelays} · Aún sin sala: crea o únete para medir el ping.`;
+      return;
+    }
+    const s = state.net.stats;
+    const ago = (t) => (t ? Math.round((Date.now() - t) / 1000) + ' s' : 'nunca');
+    el.innerHTML = `Relays: ${state.net.relayCount}/${state.net.totalRelays} · Ping: ${state.net.pingMs == null ? '…' : state.net.pingMs + ' ms'}<br>Pings enviados: ${s.pingSent} · Pongs recibidos: ${s.pingRecv}<br>Posiciones recibidas: ${s.posRecv} (última hace ${ago(s.lastPosAt)}) · Fotos de bots: ${s.botSnapRecv} (última hace ${ago(s.lastBotSnapAt)})`;
+  };
+  setInterval(updateNetDiag, 2000);
+  updateNetDiag();
+
   // Refrescar la sala cada 2 s (ping, relays, jugadores).
   setInterval(() => { if (state.room && !state.room.started) renderLobby(); }, 2000);
 }
