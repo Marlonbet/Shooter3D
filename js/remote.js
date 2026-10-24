@@ -111,10 +111,18 @@ export class RemotePlayer {
     // atrás (pico de lag o reaparición), se teletransporta para
     // no arrastrarse por todo el mapa persiguiendo un fantasma.
     const dist = this.pos.distanceTo(this.targetPos);
+    // FIX 2026-10-24 (pendiente de publicar): 'k' se declaraba
+    // con const dentro del else y se usaba fuera, así que
+    // update() lanzaba ReferenceError en cada cuadro en cuanto
+    // aparecía un jugador remoto: animate() abortaba antes de
+    // updateHUD() y de renderer.render(), el HUD quedaba en '…'
+    // y el invitado dejaba de enviar su posición (por eso el
+    // anfitrión, sin remoto que dibujar, seguía jugando bien).
+    let k = 0;
     if (dist > 6) {
       this.pos.copy(this.targetPos);
     } else {
-      const k = 1 - Math.exp(-dt * (dist > 2 ? 18 : 11));
+      k = 1 - Math.exp(-dt * (dist > 2 ? 18 : 11));
       this.pos.lerp(this.targetPos, k);
     }
     let diff = this.targetYaw - this.yaw;
@@ -210,6 +218,7 @@ window.addEventListener('neon-net', (e) => {
   if (!msg) return;
   if (msg.type === 'pos') {
     if (msg.from === state.net.myPubkey) return;
+    if (!state.net.stats) state.net.stats = { pingSent: 0, pingRecv: 0, posRecv: 0, botSnapRecv: 0, lastPosAt: 0, lastBotSnapAt: 0 };
     state.net.stats.posRecv++;
     state.net.stats.lastPosAt = Date.now();
     const cfg = DIFFICULTIES[state.difficulty] || DIFFICULTIES.normal;
@@ -228,6 +237,7 @@ window.addEventListener('neon-net', (e) => {
       if (msg.seq <= lastBotSnapSeq) return;
       lastBotSnapSeq = msg.seq;
     }
+    if (!state.net.stats) state.net.stats = { pingSent: 0, pingRecv: 0, posRecv: 0, botSnapRecv: 0, lastPosAt: 0, lastBotSnapAt: 0 };
     state.net.stats.botSnapRecv++;
     state.net.stats.lastBotSnapAt = Date.now();
     msg.bots.forEach((b, i) => {

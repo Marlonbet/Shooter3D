@@ -202,6 +202,9 @@ function handleEvent(ev) {
     if (pendingPings.has(msg.id)) {
       state.net.pingMs = Date.now() - pendingPings.get(msg.id);
       pendingPings.delete(msg.id);
+      // Defensa anti-caché mezclada: si state.js es viejo y no
+      // trae stats, se crea aquí en vez de romper el pong.
+      if (!state.net.stats) state.net.stats = { pingSent: 0, pingRecv: 0, posRecv: 0, botSnapRecv: 0, lastPosAt: 0, lastBotSnapAt: 0 };
       state.net.stats.pingRecv++;
     }
     return;
@@ -234,7 +237,10 @@ export function startPingLoop() {
       const other = (state.room.players || []).find((p) => p.pubkey !== state.net.myPubkey);
       target = other ? other.pubkey : state.net.myPubkey;
     }
-    if (target && send('ping', { id, t: Date.now(), target }, target)) state.net.stats.pingSent++;
+    if (target && send('ping', { id, t: Date.now(), target }, target)) {
+      if (!state.net.stats) state.net.stats = { pingSent: 0, pingRecv: 0, posRecv: 0, botSnapRecv: 0, lastPosAt: 0, lastBotSnapAt: 0 };
+      state.net.stats.pingSent++;
+    }
   }, 2000);
 }
 export function stopPingLoop() {

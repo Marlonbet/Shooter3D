@@ -343,7 +343,7 @@ export function setupLobby() {
       el.textContent = `Relays: ${state.net.relayCount}/${state.net.totalRelays} · Aún sin sala: crea o únete para medir el ping.`;
       return;
     }
-    const s = state.net.stats;
+    const s = state.net.stats || { pingSent: 0, pingRecv: 0, posRecv: 0, botSnapRecv: 0, lastPosAt: 0, lastBotSnapAt: 0 };
     const ago = (t) => (t ? Math.round((Date.now() - t) / 1000) + ' s' : 'nunca');
     el.innerHTML = `Relays: ${state.net.relayCount}/${state.net.totalRelays} · Ping: ${state.net.pingMs == null ? '…' : state.net.pingMs + ' ms'}<br>Pings enviados: ${s.pingSent} · Pongs recibidos: ${s.pingRecv}<br>Posiciones recibidas: ${s.posRecv} (última hace ${ago(s.lastPosAt)}) · Fotos de bots: ${s.botSnapRecv} (última hace ${ago(s.lastBotSnapAt)})`;
   };

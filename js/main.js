@@ -8,7 +8,19 @@ import { setupInput } from './input.js';
 import { setupUI } from './ui.js';
 import { applySettings } from './settings.js';
 import { pauseGame, endGame } from './game.js';
-import { updateRemotes, updateNetBots } from './remote.js';
+// Importación por espacio de nombres, no por nombre: si el
+// navegador tiene en caché un remote.js viejo (sin
+// updateNetBots) y un main.js nuevo, la importación por nombre
+// rompía TODO el juego con "Importing binding name
+// 'updateNetBots' is not found". Así, el juego arranca igual
+// aunque los archivos vengan mezclados por caché, y los bots
+// simplemente quedan en su última foto hasta que remote.js
+// se actualice.
+import * as remoteModule from './remote.js';
+const updateRemotes = remoteModule.updateRemotes;
+const updateNetBots = typeof remoteModule.updateNetBots === 'function'
+  ? remoteModule.updateNetBots
+  : () => { /* remote.js viejo: bots en su última foto */ };
 import { send, sendPlayerPos } from './net.js';
 import { broadcastScore } from './arbiter.js';
 import { setupLobby } from './lobby.js';
