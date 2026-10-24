@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NEON STRIKE">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#05060a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<title>NEON STRIKE 3D</title>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+<link rel="stylesheet" href="css/styles.css">
+
+<script>
+  (function () {
+    var isMobileUA = window.matchMedia('(pointer: coarse)').matches ||
+                     (('ontouchstart' in window) && window.innerWidth < 1100);
+    if (isMobileUA) {
+      document.documentElement.classList.add('is-mobile');
+    }
+  })();
+</script>
+
+<style>
+  #debug-screen {
+    position: fixed; inset: 0; z-index: 9999;
+    background: #05060a; color: #e8f4ff;
+    font-family: 'Segoe UI', monospace, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 20px; text-align: center; transition: opacity 0.5s;
+  }
+  #debug-screen.hidden { opacity: 0; pointer-events: none; }
+  #debug-screen h2 { color: #4dffd0; margin-bottom: 20px; letter-spacing: 2px; }
+  #debug-screen .file-list {
+    display: flex; flex-direction: column; gap: 6px;
+    background: rgba(0,0,0,0.5); padding: 20px; border-radius: 10px;
+    border: 1px solid rgba(90,220,255,0.2); max-height: 70vh; overflow-y: auto;
+    width: 100%; max-width: 400px; text-align: left;
+  }
+  .debug-item { display: flex; justify-content: space-between; font-size: 13px; }
+  .debug-item .status { font-weight: bold; }
+  .debug-item.ok .status { color: #4dffd0; }
+  .debug-item.error { color: #ff5c8a; }
+  .debug-item.error .status { color: #ff5c8a; }
+  #debug-error-detail {
+    margin-top: 20px; padding: 15px; border-radius: 8px;
+    background: rgba(255, 60, 100, 0.15); border: 1px solid #ff5c8a;
+    color: #ff9db4; font-size: 12px; max-width: 600px; width: 100%;
+    text-align: left; white-space: pre-wrap; display: none; word-break: break-all;
+  }
+  #debug-error-detail.show { display: block; }
+  #debug-error-detail strong { color: #fff; }
+</style>
+</head>
+<body>
+
+<div id="debug-screen">
+  <h2>VERIFICANDO ARCHIVOS...</h2>
+  <div class="file-list" id="debug-list"></div>
+  <div id="debug-error-detail"></div>
+</div>
+
+<canvas id="game"></canvas>
+
+<!-- ============ HUD ============ -->
+<div id="hud">
+  <div id="topbar">
+    <div class="stat"><span class="lbl">PUNTOS</span><span class="val" id="uiScore">0</span></div>
+    <div class="stat kill"><span class="lbl">BAJAS</span><span class="val" id="uiKills">0</span></div>
+    <div class="stat enem"><span class="lbl">ENEMIGOS</span><span class="val" id="uiAlive">0</span></div>
+    <div class="stat" id="pingStat"><span class="lbl">PING</span><span class="val" id="pingVal">LOCAL</span></div>
+    <div class="stat hidden" id="timeStat"><span class="lbl">TIEMPO</span><span class="val" id="timeVal">--:--</span></div>
+    <!-- Marcador de equipos (Solo Escuadra) -->
+    <div class="stat hidden" id="teamScoreHud" style="min-width:110px;">
+      <span class="lbl">EQUIPOS</span>
+      <span class="val"><span id="allyScore" style="color:#4d9fff">0</span> <span style="color:#666">-</span> <span id="enemyScore" style="color:#ff5c8a">0</span></span>
+    </div>
+  </div>
+
+  <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i></div>
+  <div id="hitmarker"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i></div>
+
+  <!-- Texto de reaparición -->
+  <div id="respawnText" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#ff5c8a;font-size:24px;font-weight:900;letter-spacing:5px;display:none;z-index:20;text-shadow:0 0 20px rgba(255,60,100,0.8);text-align:center;">
+    ELIMINADO<br><span style="font-size:16px;color:#fff;">RESPAWNEANDO EN <span id="respawnTimer">3</span></span>
+  </div>
+
+  <div id="killfeed"></div>
+  <div id="reloadHint">RECARGANDO</div>
+
+  <div id="bottombar">
+    <div id="healthWrap">
+      <div class="lbl">VIDA</div>
+      <div id="healthOuter"><div id="healthBar"></div></div>
+      <span id="healthTxt">100</span>
+    </div>
+    <div id="ammoWrap">
+      <div class="lbl">MUNICIÓN</div>
+      <div id="ammoTxt"><span id="ammoNow">30</span><span class="sep"> / </span><span id="ammoMax">30</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CONTROLES MÓVILES ============ -->
+<div id="mobileControls">
+  <div id="joystickZone">
+    <div id="joystickBase"></div>
+    <div id="joystickKnob"></div>
+  </div>
+  <button id="fireBtn">DISPARAR</button>
+  <button id="reloadBtn">RECARGAR</button>
+  <button id="jumpBtn">SALTAR</button>
+</div>
+<button id="pauseBtn">❚❚</button>
+
+<div id="damageVignette"></div>
+<div id="lowHealthVignette"></div>
+
+<!-- ============ MENU ============ -->
+<div id="menu" class="overlay">
+  <div class="sub">SHOOTER 3D ARENA</div>
+  <h1>NEON STRIKE</h1>
+
+  <div class="section">
+    <h2>MODO DE JUEGO</h2>
+    <div class="options" id="modeOptions">
+      <button data-mode="ffa" class="active">FREE FOR ALL</button>
+      <button data-mode="squad">ESCUADRA</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>DIFICULTAD</h2>
+    <div class="options" id="diffOptions">
+      <button data-diff="facil">FÁCIL</button>
+      <button data-diff="normal" class="active">NORMAL</button>
+      <button data-diff="dificil">DIFÍCIL</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>ESCENARIO</h2>
+    <div class="options" id="mapOptions">
+      <button data-map="0" class="active">ALMACÉN</button>
+      <button data-map="1">DESIERTO</button>
+      <button data-map="2">NEÓN</button>
+    </div>
+  </div>
+
+  <div class="section" style="gap:10px;">
+    <label>ENEMIGOS: <span id="enemyCountLabel">7</span></label>
+    <input type="range" id="enemyCountSlider" min="1" max="12" value="7">
+    
+    <!-- Controles específicos de Escuadra -->
+    <div id="squadSettingsWrap" style="display:none;flex-direction:column;align-items:center;gap:8px;width:100%;margin-top:8px;">
+      <label>ALIADOS: <span id="allyCountLabel">3</span></label>
+      <input type="range" id="allyCountSlider" min="0" max="6" value="3">
+      
+      <label style="margin-top:4px;">LÍMITE DE BAJAS: <span id="killLimitLabel">30</span></label>
+      <input type="range" id="killLimitSlider" min="10" max="100" step="5" value="30">
+    </div>
+  </div>
+
+  <div class="section" style="gap:10px;">
+    <label>LÍMITE DE TIEMPO (FFA): <span id="timeLimitLabel">10 min</span></label>
+    <input type="range" id="timeLimitSlider" min="0" max="20" step="5" value="10">
+    <p class="controls" style="font-size:10px;">0 = sin límite (en solo, morir termina la partida). Con límite, al agotarse se muestra el ranking final.</p>
+  </div>
+
+  <div class="row">
+    <button class="btn2 ghost" id="openSettingsBtn">⚙ CONTROLES</button>
+  </div>
+
+  <button id="startBtn">JUGAR SOLO</button>
+  <button class="btn2" id="openMultiplayerBtn">🌐 MULTIJUGADOR</button>
+  <div class="row">
+    <button class="btn2 ghost" id="fullscreenBtn">⛶ PANTALLA COMPLETA</button>
+  </div>
+  <div id="installHint" class="install-hint" style="display:none;">
+    <p class="controls" id="installHintText"></p>
+  </div>
+  <p class="controls" id="controlsHint"></p>
+</div>
+
+<!-- ============ MULTIJUGADOR ============ -->
+<div id="multiplayer" class="overlay hidden">
+  <div class="sub">PARTIDAS EN VIVO · NOSTR</div>
+  <h1>MULTIJUGADOR</h1>
+  <p class="controls" id="mpStatus">Conectando a relays…</p>
+  <div class="section">
+    <label>TU NOMBRE</label>
+    <input type="text" id="mpName" maxlength="18" placeholder="Ej: Marlon" class="textinput">
+  </div>
+  <div class="section">
+    <h2>UNIRSE A UNA SALA</h2>
+    <input type="text" id="mpJoinCode" placeholder="Código: NEON-XXXX" class="textinput" style="text-transform:uppercase;">
+    <label>BANDO (si la sala es Escuadra)</label>
+    <select id="mpJoinTeam" class="textinput">
+      <option value="ally">🔵 AZUL</option>
+      <option value="enemy">🔴 ROJO</option>
+    </select>
+    <button class="btn2" id="mpJoinBtn">UNIRSE CON CÓDIGO</button>
+  </div>
+  <div class="row">
+    <button class="btn2" id="mpCreateBtn">＋ CREAR SALA</button>
+    <button class="btn2 ghost" id="mpBackBtn">VOLVER</button>
+  </div>
+  <p class="controls">Sin servidor ni registro: tu nombre y tu clave se guardan solo en este teléfono. Comparte el código de la sala por WhatsApp.</p>
+</div>
+
+<!-- ============ CREAR SALA ============ -->
+<div id="createRoom" class="overlay hidden">
+  <div class="sub">AJUSTES DE LA PARTIDA</div>
+  <h1>CREAR SALA</h1>
+  <div class="section">
+    <h2>MODO DE JUEGO</h2>
+    <div class="options" id="createModeOptions">
+      <button data-mode="ffa" class="active">FREE FOR ALL</button>
+      <button data-mode="squad">ESCUADRA</button>
+    </div>
+  </div>
+  <div class="section">
+    <h2>ESCENARIO</h2>
+    <div class="options" id="createMapOptions">
+      <button data-map="0" class="active">ALMACÉN</button>
+      <button data-map="1">DESIERTO</button>
+      <button data-map="2">NEÓN</button>
+    </div>
+  </div>
+  <div class="section">
+    <h2>DIFICULTAD (BOTS)</h2>
+    <div class="options" id="createDiffOptions">
+      <button data-diff="facil">FÁCIL</button>
+      <button data-diff="normal" class="active">NORMAL</button>
+      <button data-diff="dificil">DIFÍCIL</button>
+    </div>
+  </div>
+  <div class="section" style="gap:10px;">
+    <label>BOTS ENEMIGOS: <span id="createEnemyLabel">5</span></label>
+    <input type="range" id="createEnemySlider" min="0" max="12" value="5">
+    <label>LÍMITE DE TIEMPO: <span id="createTimeLabel">10 min</span></label>
+    <input type="range" id="createTimeSlider" min="5" max="20" step="5" value="10">
+    <label>JUGADORES MÁXIMOS: <span id="createMaxLabel">6</span></label>
+    <input type="range" id="createMaxSlider" min="2" max="8" value="6">
+    <div id="createSquadWrap" style="display:none;flex-direction:column;align-items:center;gap:8px;width:100%;">
+      <label>BOTS ALIADOS: <span id="createAllyLabel">3</span></label>
+      <input type="range" id="createAllySlider" min="0" max="6" value="3">
+      <label>LÍMITE DE BAJAS (ESCUADRA): <span id="createKillLabel">30</span></label>
+      <input type="range" id="createKillSlider" min="10" max="100" step="5" value="30">
+    </div>
+  </div>
+  <div class="row">
+    <button class="btn2" id="createConfirmBtn">CREAR SALA</button>
+    <button class="btn2 ghost" id="createBackBtn">VOLVER</button>
+  </div>
+</div>
+
+<!-- ============ SALA PREVIA A LA PARTIDA ============ -->
+<div id="roomLobby" class="overlay hidden">
+  <div class="sub">SALA EN VIVO · REVISA ANTES DE ARRANCAR</div>
+  <h1 id="roomCodeBig">NEON-XXXX</h1>
+  <p class="controls">Anfitrión: <b id="roomHost">—</b> · <span id="roomRelayStatus">Conectando…</span> · <span id="roomPing">Ping: …</span></p>
+  <div class="section">
+    <h2>CARACTERÍSTICAS DE LA SALA</h2>
+    <div class="ranking-table" style="max-height:none;">
+      <div class="rank-row"><span>MODO</span><span id="roomCharMode">—</span></div>
+      <div class="rank-row"><span>MAPA</span><span id="roomCharMap">—</span></div>
+      <div class="rank-row"><span>DIFICULTAD</span><span id="roomCharDiff">—</span></div>
+      <div class="rank-row"><span>TIEMPO</span><span id="roomCharTime">—</span></div>
+      <div class="rank-row"><span>LÍMITE DE BAJAS</span><span id="roomCharKill">—</span></div>
+      <div class="rank-row"><span>BOTS ALIADOS</span><span id="roomCharAllyBots">—</span></div>
+      <div class="rank-row"><span>BOTS ENEMIGOS</span><span id="roomCharEnemyBots">—</span></div>
+      <div class="rank-row"><span>JUGADORES MÁXIMOS</span><span id="roomCharMax">—</span></div>
+    </div>
+  </div>
+  <div class="section">
+    <h2><span id="roomPlayerCount">0 jugadores en línea</span></h2>
+    <div id="roomPlayerList" class="ranking-table" style="max-height:28vh;"></div>
+  </div>
+  <div class="section" id="roomTeamWrap" style="display:none;">
+    <h2>TU BANDO</h2>
+    <div class="options">
+      <button data-team="ally">🔵 AZUL</button>
+      <button data-team="enemy">🔴 ROJO</button>
+    </div>
+  </div>
+  <p class="controls" id="roomTeamHint" style="display:none;"></p>
+  <div class="row">
+    <button class="btn2" id="roomStartBtn">▶ INICIAR PARTIDA</button>
+    <button class="btn2 ghost" id="roomEditBtn">⚙ CAMBIAR AJUSTES</button>
+    <button class="btn2 ghost" id="roomCopyBtn">📋 COPIAR CÓDIGO</button>
+    <button class="btn2 ghost" id="roomLeaveBtn">SALIR DE LA SALA</button>
+  </div>
+  <p class="controls" id="roomWaitText">Esperando a que el anfitrión inicie la partida…</p>
+</div>
+
+<!-- ============ SETTINGS ============ -->
+<div id="settings" class="overlay hidden">
+  <h1>CONTROLES</h1>
+  <div class="section">
+    <label>Sensibilidad cámara: <span id="camSensLabel">1.0</span></label>
+    <input type="range" id="camSensSlider" min="0.3" max="2.5" step="0.1" value="1.0">
+  </div>
+  <div class="section pcOnly">
+    <label>Sensibilidad ratón: <span id="mouseSensLabel">1.0</span></label>
+    <input type="range" id="mouseSensSlider" min="0.3" max="2.5" step="0.1" value="1.0">
+  </div>
+  <div class="section mobileOnly">
+    <label>Tamaño de botones: <span id="btnScaleLabel">1.0</span>x</label>
+    <input type="range" id="btnScaleSlider" min="0.7" max="1.5" step="0.1" value="1.0">
+  </div>
+  <div class="section mobileOnly">
+    <label>Opacidad controles: <span id="opacityLabel">1.0</span></label>
+    <input type="range" id="opacitySlider" min="0.3" max="1.0" step="0.1" value="1.0">
+  </div>
+  <div class="section pcOnly">
+    <label><input type="checkbox" id="invertYToggle"> Invertir eje Y</label>
+  </div>
+  <button class="btn2" id="closeSettingsBtn">VOLVER</button>
+</div>
+
+<!-- ============ PAUSE ============ -->
+<div id="pause" class="overlay hidden">
+  <div class="big">PAUSA</div>
+  <div class="row">
+    <button class="btn2" id="resumeBtn">CONTINUAR</button>
+    <button class="btn2 ghost" id="quitBtn">MENÚ</button>
+  </div>
+</div>
+
+<!-- ============ GAME OVER ============ -->
+<div id="gameover" class="overlay hidden">
+  <div class="big" id="gameoverTitle">ELIMINADO</div>
+  <div class="scorebig" id="gameoverSubtitle">PUNTUACIÓN: <span id="finalScore">0</span></div>
+  
+  <!-- Ranking Final -->
+  <div id="finalRanking" class="ranking-table"></div>
+
+  <div class="row" style="margin-top:10px;">
+    <button class="btn2" id="retryBtn">REINTENTAR</button>
+    <button class="btn2 ghost" id="menuBtn">MENÚ</button>
+  </div>
+</div>
+
+<div id="rotateHint">
+  <div class="ico">📱</div>
+  <div style="font-size:14px;letter-spacing:2px;font-weight:700;">GIRA EL DISPOSITIVO</div>
+  <div style="font-size:11px;color:#5b90ab;letter-spacing:1px;">Mejor experiencia en horizontal</div>
+</div>
+
+<!-- Nostr (firmas y claves) empaquetado en local, sin CDN -->
+<script src="js/nostr-bundle.js"></script>
+
+<!-- SCRIPT DE DIAGNÓSTICO Y CARGA -->
+<script type="module">
+  const FILES_TO_CHECK = [
+    'config.js', 'state.js', 'utils.js', 'three-setup.js',
+    'world.js', 'navmesh.js', 'maps.js', 'effects.js', 'hud.js',
+    'bot.js', 'player.js', 'input.js', 'settings.js', 'ui.js', 'game.js',
+    'net.js', 'remote.js', 'arbiter.js', 'lobby.js', 'fullscreen.js'
+  ];
+
+  const listEl = document.getElementById('debug-list');
+  const errorDetailEl = document.getElementById('debug-error-detail');
+  const debugScreen = document.getElementById('debug-screen');
+
+  function addLine(name) {
+    const div = document.createElement('div');
+    div.className = 'debug-item';
+    div.innerHTML = `<span>js/${name}</span><span class="status">⏳...</span>`;
+    listEl.appendChild(div);
+    return div;
+  }
+
+  function showError(file, error) {
+    const msg = error.message || error.toString();
+    errorDetailEl.innerHTML = `<strong>❌ ERROR EN: js/${file}</strong><br><br>${msg}<br><br><small>Revisa la consola (F12) para más detalles.</small>`;
+    errorDetailEl.classList.add('show');
+    if (window.location.protocol === 'file:') {
+      errorDetailEl.innerHTML += `<br><br><strong style="color:#ffd76e;">⚠️ IMPORTANTE:</strong> Estás abriendo el archivo con doble clic (file://). Debes usar un servidor local (http://localhost).`;
+    }
+  }
+
+  async function runDiagnostics() {
+    let hasError = false;
+    for (const file of FILES_TO_CHECK) {
+      const line = addLine(file);
+      try {
+        await import(`./js/${file}`);
+        line.querySelector('.status').textContent = '✅ OK';
+        line.classList.add('ok');
+      } catch (err) {
+        line.querySelector('.status').textContent = '❌ FALLO';
+        line.classList.add('error');
+        showError(file, err);
+        hasError = true;
+        break;
+      }
+    }
+
+    if (!hasError) {
+      const line = addLine('main.js');
+      try {
+        await import('./js/main.js');
+        line.querySelector('.status').textContent = '✅ OK';
+        line.classList.add('ok');
+        setTimeout(() => debugScreen.classList.add('hidden'), 800);
+      } catch (err) {
+        line.querySelector('.status').textContent = '❌ FALLO';
+        line.classList.add('error');
+        showError('main.js', err);
+      }
+    }
+  }
+
+  window.addEventListener('error', (e) => {
+    if (e.message && e.message.includes('SyntaxError')) showError('(Error de sintaxis global)', e);
+  });
+
+  runDiagnostics();
+</script>
+</body>
+</html>
