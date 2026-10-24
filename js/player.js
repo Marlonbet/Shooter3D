@@ -154,7 +154,10 @@ export function playerShoot() {
   // Reclamación de impacto al árbitro (red) o daño local (solo).
   const claimHit = (targetKind, targetIndex, targetPubkey, dmg, isHead) => {
     if (!netMode) return;
-    const claim = { targetKind, targetIndex, targetPubkey, damage: dmg, headshot: isHead };
+    // hitId único: el mismo impacto puede llegar dos veces al
+    // árbitro (una por Nostr y otra por el canal directo), y
+    // sin esto haría daño doble. El árbitro ignora repetidos.
+    const claim = { targetKind, targetIndex, targetPubkey, damage: dmg, headshot: isHead, hitId: Math.random().toString(36).slice(2, 10) + Date.now().toString(36) };
     if (state.net.isHost) {
       // El anfitrión se aplica su propio impacto sin pasar por
       // el relay (sus mensajes propios se filtran en net.js).

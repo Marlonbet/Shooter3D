@@ -43,6 +43,10 @@ export const state = {
     // Contadores de diagnóstico de red (para saber, sin adivinar,
     // si los mensajes llegan o se pierden por el camino).
     stats: { pingSent: 0, pingRecv: 0, posRecv: 0, botSnapRecv: 0, lastPosAt: 0, lastBotSnapAt: 0 },
+    // Canal directo WebRTC (ver rtc.js): true si al menos un
+    // par está conectado en directo; si no, todo va por Nostr.
+    rtcDirect: false,
+    rtcPeerCount: 0,
   },
   // Sala actual antes y durante la partida.
   room: null, // { code, hostPubkey, hostName, settings, players, started }

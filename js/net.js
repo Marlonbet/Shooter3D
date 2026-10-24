@@ -35,6 +35,30 @@ let pingTimer = null;
 let announceTimer = null;
 let posSeq = 0;
 const pendingPings = new Map(); // id -> t0
+// Canal directo WebRTC (rtc.js lo registra si el navegador lo
+// soporta). net.js NO importa rtc.js para no crear un ciclo:
+// rtc.js importa net.js y aquí solo se guarda su función.
+let rtcSender = null; // (msg, targetPubkey|null) => boolean
+let rtcCloser = null; // () => void
+export function setRtcSender(fn) { rtcSender = fn; }
+export function setRtcCloser(fn) { rtcCloser = fn; }
+
+// Ping/pong compartidos entre Nostr y el canal directo: el
+// mismo código mide en ambos caminos, así el Ping que se ve
+// en pantalla es el del camino más rápido que respondió.
+export function handlePingMessage(msg, replyFn) {
+  if (state.net.isHost || msg.target === state.net.myPubkey) {
+    try { replyFn(msg.id, msg.t); } catch (err) { /* sin respuesta */ }
+  }
+}
+export function handlePongMessage(msg) {
+  if (pendingPings.has(msg.id)) {
+    state.net.pingMs = Date.now() - pendingPings.get(msg.id);
+    pendingPings.delete(msg.id);
+    if (!state.net.stats) state.net.stats = { pingSent: 0, pingRecv: 0, posRecv: 0, botSnapRecv: 0, lastPosAt: 0, lastBotSnapAt: 0 };
+    state.net.stats.pingRecv++;
+  }
+}
 
 function tools() {
   return window.NostrTools || null;
@@ -150,6 +174,15 @@ export function send(type, data = {}, targetPubkey = null) {
       content,
     }, secretKey);
     publish(event);
+    // Vía rápida paralela: si hay canal directo, el mismo
+    // mensaje va también por ahí. Los receptores filtran los
+    // duplicados (pos y fotos por secuencia, daño y marcador
+    // por ser idempotentes, impactos por hitId en arbiter.js).
+    // La señalización rtc_* NO se reenvía por el canal directo
+    // (es la que sirve para crearlo, y entraría en bucle).
+    if (rtcSender && !type.startsWith('rtc_')) {
+      try { rtcSender({ v: 1, type, from: state.net.myPubkey, name: state.net.myName, ...data }, targetPubkey); } catch (err) { /* sigue por Nostr */ }
+    }
     return true;
   } catch (err) {
     return false;
@@ -184,29 +217,15 @@ function handleEvent(ev) {
 
   // ---- Ping / pong: se resuelven aquí, no llegan a la UI ----
   if (msg.type === 'ping') {
-    // El anfitrión responde; si yo soy el anfitrión, respondo
-    // también a mi propio ping (mide la vuelta por el relay).
-    if (state.net.isHost || msg.target === state.net.myPubkey) {
-      send('pong', { id: msg.id, t: msg.t }, msg.from);
-    }
+    handlePingMessage(msg, (id, t) => send('pong', { id, t }, msg.from));
     return;
   }
   if (msg.type === 'pong') {
-    // BUG CORREGIDO 2026-10-24: antes se exigía msg.target en el
-    // contenido, pero send() pone el destinatario solo en la
-    // etiqueta ['p', pubkey], nunca en el contenido. Por eso el
-    // pong se ignoraba siempre y el ping quedaba en "…" en
-    // anfitrión e invitado. Ahora se comprueba la etiqueta.
+    // El destinatario va solo en la etiqueta ['p'], nunca en el
+    // contenido (ese fue el bug que dejaba el ping en "…").
     const pTag = (ev.tags || []).find((t) => t[0] === 'p');
     if (pTag && pTag[1] !== state.net.myPubkey) return;
-    if (pendingPings.has(msg.id)) {
-      state.net.pingMs = Date.now() - pendingPings.get(msg.id);
-      pendingPings.delete(msg.id);
-      // Defensa anti-caché mezclada: si state.js es viejo y no
-      // trae stats, se crea aquí en vez de romper el pong.
-      if (!state.net.stats) state.net.stats = { pingSent: 0, pingRecv: 0, posRecv: 0, botSnapRecv: 0, lastPosAt: 0, lastBotSnapAt: 0 };
-      state.net.stats.pingRecv++;
-    }
+    handlePongMessage(msg);
     return;
   }
 
@@ -305,10 +324,13 @@ export function leaveRoom() {
   if (state.room) send('leave', {});
   stopPingLoop();
   stopAnnounceLoop();
+  if (rtcCloser) { try { rtcCloser(); } catch (err) { /* sin canal */ } }
   state.room = null;
   state.net.enabled = false;
   state.net.isHost = false;
   state.net.pingMs = null;
+  state.net.rtcDirect = false;
+  state.net.rtcPeerCount = 0;
 }
 
 // El anfitrión anuncia la sala cada 3 s para que los que entran
@@ -360,6 +382,7 @@ export function hostApplyTeam(msg) {
 export function disconnectAll() {
   stopPingLoop();
   stopAnnounceLoop();
+  if (rtcCloser) { try { rtcCloser(); } catch (err) { /* sin canal */ } }
   for (const ws of sockets.values()) {
     try { ws.close(); } catch (err) { /* ya cerrado */ }
   }

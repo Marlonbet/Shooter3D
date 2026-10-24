@@ -25,6 +25,7 @@ import { send, sendPlayerPos } from './net.js';
 import { broadcastScore } from './arbiter.js';
 import { setupLobby } from './lobby.js';
 import { setupFullscreen, enterFullscreen } from './fullscreen.js';
+import './rtc.js'; // canal directo WebRTC (Nostr sigue de respaldo)
 
 /* ---------- Inicialización ---------- */
 buildMap(0);

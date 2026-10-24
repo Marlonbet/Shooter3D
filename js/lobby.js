@@ -308,6 +308,9 @@ export function setupLobby() {
       }
     } else if (msg.type === 'start') {
       if (state.net.isHost) return;
+      // 'start' puede llegar dos veces (directo + relay): la
+      // segunda no debe reiniciar la partida desde cero.
+      if (state.room.started && state.running) return;
       state.room.settings = msg.settings;
       state.room.players = msg.players;
       state.room.botNames = msg.botNames;
@@ -345,7 +348,7 @@ export function setupLobby() {
     }
     const s = state.net.stats || { pingSent: 0, pingRecv: 0, posRecv: 0, botSnapRecv: 0, lastPosAt: 0, lastBotSnapAt: 0 };
     const ago = (t) => (t ? Math.round((Date.now() - t) / 1000) + ' s' : 'nunca');
-    el.innerHTML = `Relays: ${state.net.relayCount}/${state.net.totalRelays} · Ping: ${state.net.pingMs == null ? '…' : state.net.pingMs + ' ms'}<br>Pings enviados: ${s.pingSent} · Pongs recibidos: ${s.pingRecv}<br>Posiciones recibidas: ${s.posRecv} (última hace ${ago(s.lastPosAt)}) · Fotos de bots: ${s.botSnapRecv} (última hace ${ago(s.lastBotSnapAt)})`;
+    el.innerHTML = `Relays: ${state.net.relayCount}/${state.net.totalRelays} · Ping: ${state.net.pingMs == null ? '…' : state.net.pingMs + ' ms'} · Directo: ${state.net.rtcDirect ? 'SÍ (' + state.net.rtcPeerCount + ')' : 'NO (por relay)'}<br>Pings enviados: ${s.pingSent} · Pongs recibidos: ${s.pingRecv}<br>Posiciones recibidas: ${s.posRecv} (última hace ${ago(s.lastPosAt)}) · Fotos de bots: ${s.botSnapRecv} (última hace ${ago(s.lastBotSnapAt)})`;
   };
   setInterval(updateNetDiag, 2000);
   updateNetDiag();

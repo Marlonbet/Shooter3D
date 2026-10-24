@@ -51,8 +51,21 @@ function applyDamageToRemote(victim, amount, headshot, killerPubkey, killer) {
   broadcastDamage(victim.pubkey, amount, headshot, killerPubkey, killerKills, victim.hp, died);
 }
 
+// Impactos ya vistos (hitId -> hora): un mismo disparo puede
+// llegar por Nostr y por el canal directo; el segundo se ignora
+// para no aplicar daño doble. Se podan los de más de 30 s.
+const seenHitIds = new Map();
+
 function handleHit(msg) {
   if (!state.net.isHost) return;
+  if (msg.hitId) {
+    const now = Date.now();
+    if (seenHitIds.has(msg.hitId)) return;
+    seenHitIds.set(msg.hitId, now);
+    if (seenHitIds.size > 500) {
+      for (const [id, t] of seenHitIds) if (now - t > 30000) seenHitIds.delete(id);
+    }
+  }
   const shooter = msg.from;
   const sPos = shooterPos(shooter);
   if (!sPos) return;
