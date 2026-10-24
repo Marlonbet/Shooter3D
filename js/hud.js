@@ -63,7 +63,7 @@ export function updateHUD() {
     if (state.net.enabled) {
       pingStat.classList.remove('hidden');
       const ms = state.net.pingMs;
-      pingVal.textContent = ms == null ? '…' : ms + ' ms';
+      pingVal.textContent = ms == null ? '…' : ms + ' ms' + (state.net.rtcDirect ? ' · DIRECTO' : '');
       pingVal.classList.remove('ping-good', 'ping-mid', 'ping-bad');
       if (ms != null) pingVal.classList.add(ms < 150 ? 'ping-good' : ms < 300 ? 'ping-mid' : 'ping-bad');
     } else {

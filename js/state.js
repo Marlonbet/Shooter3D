@@ -47,6 +47,8 @@ export const state = {
     // par está conectado en directo; si no, todo va por Nostr.
     rtcDirect: false,
     rtcPeerCount: 0,
+    rtcStatus: 'sin par',
+    rtcStats: { offerSent: 0, offerRecv: 0, answerSent: 0, answerRecv: 0, iceSent: 0, iceRecv: 0 },
   },
   // Sala actual antes y durante la partida.
   room: null, // { code, hostPubkey, hostName, settings, players, started }

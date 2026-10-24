@@ -86,6 +86,19 @@ export function renderLobby() {
   $('roomRelayStatus').textContent = state.net.connected
     ? `● ${state.net.relayCount}/${state.net.totalRelays} relays` : 'Conectando a relays…';
   $('roomPing').textContent = state.net.pingMs == null ? 'Ping: …' : `Ping: ${state.net.pingMs} ms`;
+  // Directo: visible AQUÍ, en la sala, no solo en la pantalla
+  // anterior (ahí el usuario ya no está cuando se negocia).
+  const rd = $('roomDirect');
+  if (rd) {
+    rd.textContent = state.net.rtcDirect
+      ? `Directo: SÍ (${state.net.rtcPeerCount})`
+      : `Directo: ${state.net.rtcStatus || 'NO (por relay)'}`;
+  }
+  const rdiag = $('roomRtcDiag');
+  if (rdiag) {
+    const rs = state.net.rtcStats || { offerSent: 0, offerRecv: 0, answerSent: 0, answerRecv: 0, iceSent: 0, iceRecv: 0 };
+    rdiag.textContent = `Directo: ${state.net.rtcStatus || 'sin par'} · Ofertas: ${rs.offerSent} enviadas / ${rs.offerRecv} recibidas · Respuestas: ${rs.answerSent} enviadas / ${rs.answerRecv} recibidas · ICE: ${rs.iceSent} enviados / ${rs.iceRecv} recibidos`;
+  }
   if (s) {
     $('roomCharMode').textContent = modeLabel(s.mode);
     $('roomCharMap').textContent = mapLabel(s.mapId);
@@ -348,7 +361,7 @@ export function setupLobby() {
     }
     const s = state.net.stats || { pingSent: 0, pingRecv: 0, posRecv: 0, botSnapRecv: 0, lastPosAt: 0, lastBotSnapAt: 0 };
     const ago = (t) => (t ? Math.round((Date.now() - t) / 1000) + ' s' : 'nunca');
-    el.innerHTML = `Relays: ${state.net.relayCount}/${state.net.totalRelays} · Ping: ${state.net.pingMs == null ? '…' : state.net.pingMs + ' ms'} · Directo: ${state.net.rtcDirect ? 'SÍ (' + state.net.rtcPeerCount + ')' : 'NO (por relay)'}<br>Pings enviados: ${s.pingSent} · Pongs recibidos: ${s.pingRecv}<br>Posiciones recibidas: ${s.posRecv} (última hace ${ago(s.lastPosAt)}) · Fotos de bots: ${s.botSnapRecv} (última hace ${ago(s.lastBotSnapAt)})`;
+    el.innerHTML = `Relays: ${state.net.relayCount}/${state.net.totalRelays} · Ping: ${state.net.pingMs == null ? '…' : state.net.pingMs + ' ms'} · Directo: ${state.net.rtcDirect ? 'SÍ (' + state.net.rtcPeerCount + ')' : (state.net.rtcStatus || 'NO (por relay)')} <br>Pings enviados: ${s.pingSent} · Pongs recibidos: ${s.pingRecv}<br>Posiciones recibidas: ${s.posRecv} (última hace ${ago(s.lastPosAt)}) · Fotos de bots: ${s.botSnapRecv} (última hace ${ago(s.lastBotSnapAt)})`;
   };
   setInterval(updateNetDiag, 2000);
   updateNetDiag();
